@@ -12,38 +12,38 @@ Angular SignalR Service
 
 ## Example usage
 
-angular.app('myapp', ['services.hub']).config(function(HubProvider){
-
-  HubProvider.setHubName('myHub');
-
-}).factory('myService', function(Hub){
-
-  var Factory = this;
+  angular.app('myapp', ['services.hub']).config(function(HubProvider){
   
-  Factory.items = [];
+    HubProvider.setHubName('myHub');
   
-  Factory.getItemsFromHub = function(){
-    // Ask the hub for items
-    Hub.invoke('getItems');
-  };
+  }).factory('myService', function(Hub){
   
-  // Hub responds with items
-  // Callcback function is wrapped in $apply by hub
-  Hub.on('itemsSentFromHub', function(items){
-  
-    angular.each(items, function(item){
-      Factory.items.push(item);
+    var Factory = this;
+    
+    Factory.items = [];
+    
+    Factory.getItemsFromHub = function(){
+      // Ask the hub for items
+      Hub.invoke('getItems');
+    };
+    
+    // Hub responds with items
+    // Callcback function is wrapped in $apply by hub
+    Hub.on('itemsSentFromHub', function(items){
+    
+      angular.each(items, function(item){
+        Factory.items.push(item);
+      });
+    
     });
+    
+    
+    return Factory;
+  
+  }).controller('ItemsController', function(myService){
+  
+    this.items = myService.items;
+    
+    myService.getItems();
   
   });
-  
-  
-  return Factory;
-
-}).controller('ItemsController', function(myService){
-
-  this.items = myService.items;
-  
-  myService.getItems();
-
-});
