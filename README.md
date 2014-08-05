@@ -11,13 +11,14 @@ Angular SignalR Service
 
 
 ## Example usage
-
-  angular.app('myapp', ['services.hub']).config(function(HubProvider){
-  
+```
+  Config.$inject = ['HubProvider'];
+  function Config(HubProvider) {
     HubProvider.setHubName('myHub');
+  }
   
-  }).factory('myService', function(Hub){
-  
+  ItemsService.$inject = ['Hub'];
+  function ItemsService(Hub) {
     var Factory = this;
     
     Factory.items = [];
@@ -39,11 +40,13 @@ Angular SignalR Service
     
     
     return Factory;
-  
-  }).controller('ItemsController', function(myService){
-  
+  }
+
+  ItemsController.$inject = ['ItemsService'];
+  function ItemsController(ItemsService) {
     this.items = myService.items;
-    
     myService.getItems();
+  }
   
-  });
+  angular.app('myapp', ['services.hub']).config(Config).factory('ItemsService', ItemsService).controller('ItemsController', ItemsController);
+```
