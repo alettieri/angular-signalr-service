@@ -12,12 +12,12 @@ Angular SignalR Service
 
 ## Example usage
 ```
-  Config.$inject = ['HubProvider'];
-  function Config(HubProvider) {
-    HubProvider.setHubName('myHub');
+  ItemHubFactory.$inject = ['HubService'];
+  function ItemHubFactory(HubService) {
+     return new HubService('itemHub');
   }
-  
-  ItemsService.$inject = ['Hub'];
+
+  ItemsService.$inject = ['ItemHub'];
   function ItemsService(Hub) {
     var Factory = this;
     
@@ -48,5 +48,5 @@ Angular SignalR Service
     myService.getItems();
   }
   
-  angular.app('myapp', ['services.hub']).config(Config).factory('ItemsService', ItemsService).controller('ItemsController', ItemsController);
+  angular.app('myapp', ['services.hub']).factory('ItemHub', ItemHubFactory).factory('ItemsService', ItemsService).controller('ItemsController', ItemsController);
 ```

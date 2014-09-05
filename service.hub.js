@@ -1,111 +1,147 @@
 ﻿(function ($, angular, document) {
 	'use strict';
 
-	function Hub() {
+	HubService.$inject = ['$rootScope', '$q', 'HubConnectionEvents'];
+	function HubService($rootScope, $q, ConnectionEvents) { 
 
-		var hubName = '',
-			loggingEnabled = false,
-			connectionPath = '.'
-		;
+		/**
+		 * Class Hub
+		 * @param {String} hubName
+		 * @param [{Object}] options
+		 */
+		function Hub(hubName, options) {
 
-		this.setHubName = function (name) {
-			hubName = name;
-		};
-
-		this.setLoggin = function (enabled) {
-			loggingEnabled = enabled;
-		};
-
-		this.setConnectionPath = function (path) {
-			connectionPath = path;
-		};
-
-
-		this.$get = ['$rootScope', 'HubConnectionEvents', function ($rootScope, ConnectionEvents) {
-
-			// Hub is either the instnace or 'this'
-			var Hub = {};
-
+			// Ensure a hub name was passed
 			if (!hubName) {
-				throw new Error('Hub name was not specified, be sure to use the setHubName method in the config');
-				return Hub;
+				throw new Error('Hub name was not specified, be sure to pass it in when invoking the Hub class');
 			}
+			
+			// Hub Settings
+			var settings = angular.extend({
 
-			// Create Connection
-			Hub.connection = $.hubConnection(connectionPath);
+				// Enable hub logging events
+				logginEnabled: false,
 
-			// Create Hub Proxy
-			Hub.proxy = Hub.connection.createHubProxy(hubName);
+				// Connection path to use
+				connectionPath: '.'
 
-			// Set logging, either true or false
-			Hub.connection.logging = loggingEnabled;
+			}, options);
 
+			// Create and set the connection property
+			this.connection = $.hubConnection(settings.connectionPath);
+
+			// Set Logging
+			this.connection.logging = settings.loggingEnabled;
+
+			// Create and set the Hub Proxy
+			this.proxy = this.connection.createHubProxy(hubName);
+
+			// Bind to connection events , this is only done once.
+			this.connectionStatus.__bindToConnectionEvents(this.connection);
+
+			// Set this object to instance property.
+			this.__instance__ = this;
+			
+		}
+
+		/**
+		 * Add the following methods to the Hub.prototype chain
+		 */
+		angular.extend(Hub.prototype, {
 			/**
 			 * Starts the hub connection
 			 * @return {Promise}
 			 */
-			Hub.start = function () {
-				return Hub.connection.start();
-			};
+			start: function start () {
+				return this.connection.start();
+			},
 
+			/**
+			 * Hub.on
+			 * @param {String} evt
+			 * @param {Function} fn
+			 */
+			on: function on(evt, fn) {
 
-			// Expose 'on' method
-			Hub.on = function (evt, fn) {
-
-				Hub.proxy.on(evt, function (response) {
+				this.proxy.on(evt, function (response) {
 
 					// Have angular run a digest
-					$rootScope.$apply(function () {
+					$rootScope.$evalAsync(function () {
 						fn.call(fn, response);
 					});
 
 				});
 
-				return Hub; // Return for chaining
-			};
+				return this; // Return for chaining
+			},
 
-			// Expose 'off' method
-			Hub.off = function () {
-				Hub.proxy.off.apply(Hub.proxy, arguments);
-			};
+			/**
+			 * Hub.off
+			 * Stops listening to passed in event
+			 * 
+			 * @example
+			 * Hub.off('getDataFromHub', getDataFromHubCallback);
+			 */
+			off: function () {
+				this.proxy.off.apply(this.proxy, arguments);
+			},
 
-
-			// Expose 'invoke' or 'send' method
-			// Method will ensure that a connection has been established before
-			//		calling to the hub
-			//
-			Hub.send = Hub.invoke = function () {
+			/**
+			 * Hub.invoke
+			 * Method will ensure that a connection has been established before
+			 *	calling to the hub
+			 * 
+			 * @example
+			 * Hub.invoke('sendMessage', 'Message to Send');
+			 */
+			invoke: function invoke() {
 
 				// Store the passed in arguments
-				var args = arguments;
+				var args = arguments,
 
-				// Resolve the invoke call
+					// Send will always return a promise.
+					// Promises are resolved by the hub invoke method
+					deferred = $q.defer(),
+
+					// Internal context
+					self = this
+				;
+
+				// Resolve the invoke call and it's promise
 				function resolve() {
-					Hub.proxy.invoke.apply(Hub.proxy, args);
+					// Our promise is either resolved or rejected by the hubs response.
+					self.proxy.invoke.apply(self.proxy, args).then(deferred.resolve, deferred.reject);
 				}
 
 				// Resolve the method immediately if the connection is established
-				if (Hub.connection.state === $.signalR.connectionState.connected) {
+				if (this.connection.state === $.signalR.connectionState.connected) {
 					resolve();
 				}
 
 				// In the event that we're disconnected
-				if (Hub.connection.state === $.signalR.connectionState.disconnected) {
+				if (this.connection.state === $.signalR.connectionState.disconnected) {
 
 					// Start the connection, then resolve once we're connected
-					Hub.start().done(function () {
+					this.start().done(function () {
 						resolve();
 					});
 				}
 
+				// Return the promise
+				return deferred.promise;
+			},
 
-				return Hub; // Return for chaining
-			};
+			/**
+			 * Alias for invoke
+			 */
+			send: function () {
+				return this.invoke.apply(this, arguments);
+			},
 
 			/**
 			 * Exposes the Hubs connection status
 			 */
-			Hub.status = {
+			connectionStatus: {
 
 				// Disconnected flag
 				disconnected: false,
@@ -136,10 +172,10 @@
 				},
 
 				/**
-					* Determine if the hub connection is down
-					* 
-					* @return boolean
-					*/
+				 * Determine if the hub connection is down
+				 * 
+				 * @return boolean
+				 */
 				isDown: function () {
 					return this.disconnected || this.reconnecting;
 				},
@@ -152,72 +188,81 @@
 				setConnection: function (reconnectVal, disconnectVal) {
 
 					var self = this;
-
+					
 					// Ask angular to udpate the digest
-					$rootScope.$apply(function () {
+					$rootScope.$evalAsync(function () {
 						self.reconnecting = reconnectVal;
 						self.disconnected = disconnectVal;
 					});
+				},
+
+				/**
+				 * Bind to the connection events
+				 * @param {Object} connection
+				 */
+				__bindToConnectionEvents: function bindConnections(connection) {
+
+					// We only want to bind once.
+					// So if there's an existing instance, just return
+					//
+					if (this.__instance__) return;
+
+					// Internal context to Hub.connectionStatus
+					var self = this;
+
+					/**
+					 * Uses rootScope to broadcast the desired connection event
+					 */
+					function broadcastConnectionEvent() {
+						$rootScope.$broadcast.apply($rootScope, arguments);
+					}
+
+					/**
+					 * Update the connection status on the hub, when the state changes
+					 */
+					function updateConnectionState(evt, state) {
+
+						var reconnecting = state.newState === $.signalR.connectionState.reconnecting,
+							disconnected = state.newState === $.signalR.connectionState.disconnected
+						;
+
+						self.setConnection(reconnecting, disconnected);
+
+					};
+
+					// Hook into the change event
+					$rootScope.$on(ConnectionEvents.change, updateConnectionState);
+
+					// Bind to the connection reconnecting event
+					connection.reconnecting(function () {
+						broadcastConnectionEvent(ConnectionEvents.reconnecting);
+					});
+
+					// Bind to the connection reconnected event
+					connection.reconnected(function () {
+						broadcastConnectionEvent(ConnectionEvents.reconnected);
+					});
+
+					// Bind to the connection disconnected event
+					connection.disconnected(function () {
+						broadcastConnectionEvent(ConnectionEvents.disconnected);
+					});
+
+					// Bind to the connection error event
+					connection.error(function (error, data) {
+						broadcastConnectionEvent(ConnectionEvents.error, error, data);
+					});
+
+					// Bind to the connection change event
+					connection.stateChanged(function (state) {
+						broadcastConnectionEvent(ConnectionEvents.change, state);
+					});
 				}
-			};
-
-			/**
-			 * Uses rootScope to broadcast the desired connection event
-			 */
-			function broadcastConnectionEvent() {
-				$rootScope.$broadcast.apply($rootScope, arguments);
 			}
+		});
 
-			/**
-			 * Update the connection status on the hub, when the state changes
-			 */
-			function updateConnectionState(evt, state) {
-
-				var reconnecting = state.newState === $.signalR.connectionState.reconnecting,
-					disconnected = state.newState === $.signalR.connectionState.disconnected
-				;
-
-				Hub.status.setConnection(reconnecting, disconnected);
-
-			};
-
-			// Hoock into the change event
-			$rootScope.$on(ConnectionEvents.change, updateConnectionState);
-
-			//
-			// Bind to the connection reconnecting event
-			//
-			Hub.connection.reconnecting(function () {
-				broadcastConnectionEvent(ConnectionEvents.reconnecting);
-			});
-
-			// Bind to the connection reconnected event
-			Hub.connection.reconnected(function () {
-				broadcastConnectionEvent(ConnectionEvents.reconnected);
-			});
-
-			// Bind to the connection disconnected event
-			Hub.connection.disconnected(function () {
-				broadcastConnectionEvent(ConnectionEvents.disconnected);
-			});
-
-			// Bind to the connection error event
-			Hub.connection.error(function (error, data) {
-				broadcastConnectionEvent(ConnectionEvents.error, error, data);
-			});
-
-			// Bind to the connection change event
-			Hub.connection.stateChanged(function (state) {
-				broadcastConnectionEvent(ConnectionEvents.change, state);
-			});
-
-			//
-			// Return Hub
-			//
-			return Hub;
-
-		}];
-
+		// Return our Class
+		return Hub;
 		
 	}
 
@@ -234,7 +279,7 @@
 		})
 
 		// Register the Hub
-		.provider('Hub', Hub);
+		.service('HubService', HubService);
 
 	
 
