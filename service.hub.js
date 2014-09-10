@@ -1,16 +1,25 @@
-﻿(function ($, angular, document) {
+(function ($, angular, document) {
 	'use strict';
 
-	HubService.$inject = ['$rootScope', '$q', 'HubConnectionEvents'];
-	function HubService($rootScope, $q, ConnectionEvents) { 
-
+	HubFactory.$inject = ['$rootScope', '$q', 'HubConnectionEvents'];
+	function HubFactory($rootScope, $q, ConnectionEvents) {
+		
 		/**
 		 * Class Hub
+		 * This is a re-usable Class
+		 * @example
+		 * 
+		 * var myHub = new Hub('myHub');
+		 * 
+		 * myHub.send('sendMessage', 'Hello from Client');
+		 * 
+		 * myHub.on('receiveMessage', function(msg){ console.log('Server:', msg); });
+		 * 
 		 * @param {String} hubName
 		 * @param [{Object}] options
 		 */
 		function Hub(hubName, options) {
-
+			
 			// Ensure a hub name was passed
 			if (!hubName) {
 				throw new Error('Hub name was not specified, be sure to pass it in when invoking the Hub class');
@@ -20,7 +29,7 @@
 			var settings = angular.extend({
 
 				// Enable hub logging events
-				logginEnabled: false,
+				loggingEnabled: false,
 
 				// Connection path to use
 				connectionPath: '.'
@@ -37,22 +46,20 @@
 			this.proxy = this.connection.createHubProxy(hubName);
 
 			// Bind to connection events , this is only done once.
-			this.connectionStatus.__bindToConnectionEvents(this.connection);
-
-			// Set this object to instance property.
-			this.__instance__ = this;
+			bindConnectionEvents(this);
+			
 			
 		}
 
 		/**
 		 * Add the following methods to the Hub.prototype chain
 		 */
-		angular.extend(Hub.prototype, {
+		Hub.prototype = {
 			/**
 			 * Starts the hub connection
 			 * @return {Promise}
 			 */
-			start: function start () {
+			start: function start() {
 				return this.connection.start();
 			},
 
@@ -188,78 +195,75 @@
 				setConnection: function (reconnectVal, disconnectVal) {
 
 					var self = this;
-					
+
 					// Ask angular to udpate the digest
 					$rootScope.$evalAsync(function () {
 						self.reconnecting = reconnectVal;
 						self.disconnected = disconnectVal;
 					});
-				},
-
-				/**
-				 * Bind to the connection events
-				 * @param {Object} connection
-				 */
-				__bindToConnectionEvents: function bindConnections(connection) {
-
-					// We only want to bind once.
-					// So if there's an existing instance, just return
-					//
-					if (this.__instance__) return;
-
-					// Internal context to Hub.connectionStatus
-					var self = this;
-
-					/**
-					 * Uses rootScope to broadcast the desired connection event
-					 */
-					function broadcastConnectionEvent() {
-						$rootScope.$broadcast.apply($rootScope, arguments);
-					}
-
-					/**
-					 * Update the connection status on the hub, when the state changes
-					 */
-					function updateConnectionState(evt, state) {
-
-						var reconnecting = state.newState === $.signalR.connectionState.reconnecting,
-							disconnected = state.newState === $.signalR.connectionState.disconnected
-						;
-
-						self.setConnection(reconnecting, disconnected);
-
-					};
-
-					// Hook into the change event
-					$rootScope.$on(ConnectionEvents.change, updateConnectionState);
-
-					// Bind to the connection reconnecting event
-					connection.reconnecting(function () {
-						broadcastConnectionEvent(ConnectionEvents.reconnecting);
-					});
-
-					// Bind to the connection reconnected event
-					connection.reconnected(function () {
-						broadcastConnectionEvent(ConnectionEvents.reconnected);
-					});
-
-					// Bind to the connection disconnected event
-					connection.disconnected(function () {
-						broadcastConnectionEvent(ConnectionEvents.disconnected);
-					});
-
-					// Bind to the connection error event
-					connection.error(function (error, data) {
-						broadcastConnectionEvent(ConnectionEvents.error, error, data);
-					});
-
-					// Bind to the connection change event
-					connection.stateChanged(function (state) {
-						broadcastConnectionEvent(ConnectionEvents.change, state);
-					});
 				}
 			}
-		});
+		};
+
+
+		/**
+		 * Bind to the connection events.
+		 * This is a private method, we use it to bind the hubs connection events when constructed.
+		 * 
+		 * @param {Hub} hubInstance
+		 */
+		function bindConnectionEvents(hubInstance) {
+			
+			/**
+			 * Uses rootScope to broadcast the desired connection event
+			 */
+			function broadcastConnectionEvent() {
+				$rootScope.$broadcast.apply($rootScope, arguments);
+			}
+
+			/**
+			 * Update the connection status on the hub, when the state changes
+			 */
+			function updateConnectionState(evt, state) {
+
+				var reconnecting = state.newState === $.signalR.connectionState.reconnecting,
+					disconnected = state.newState === $.signalR.connectionState.disconnected
+				;
+
+				hubInstance.connectionStatus.setConnection(reconnecting, disconnected);
+
+			};
+
+			// Hook into the change event
+			$rootScope.$on(ConnectionEvents.change, updateConnectionState);
+
+			// Bind to the connection reconnecting event
+			hubInstance.connection.reconnecting(function () {
+				broadcastConnectionEvent(ConnectionEvents.reconnecting);
+			});
+
+			// Bind to the connection reconnected event
+			hubInstance.connection.reconnected(function () {
+				broadcastConnectionEvent(ConnectionEvents.reconnected);
+			});
+
+			// Bind to the connection disconnected event
+			hubInstance.connection.disconnected(function () {
+				broadcastConnectionEvent(ConnectionEvents.disconnected);
+			});
+
+			// Bind to the connection error event
+			hubInstance.connection.error(function (error, data) {
+				broadcastConnectionEvent(ConnectionEvents.error, error, data);
+			});
+
+			// Bind to the connection change event
+			hubInstance.connection.stateChanged(function (state) {
+				broadcastConnectionEvent(ConnectionEvents.change, state);
+			});
+		}
+
+
 
 		// Return our Class
 		return Hub;
@@ -278,8 +282,8 @@
 			reconnecting: 'hub:connection:reconnecting'
 		})
 
-		// Register the Hub
-		.service('HubService', HubService);
+		// Register the Hub Proxy Service
+		.factory('HubProxy', HubFactory);
 
 	
 
