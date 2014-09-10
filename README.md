@@ -12,9 +12,9 @@ Angular SignalR Service
 
 ## Example usage
 ```
-  ItemHubFactory.$inject = ['HubService'];
-  function ItemHubFactory(HubService) {
-     return new HubService('itemHub');
+  ItemHubFactory.$inject = ['HubProxy'];
+  function ItemHubFactory(HubProxy) {
+     return new HubProxy('itemHub');
   }
 
   ItemsService.$inject = ['ItemHub'];
