@@ -232,7 +232,7 @@
 
 				hubInstance.connectionStatus.setConnection(reconnecting, disconnected);
 
-			};
+			}
 
 			// Hook into the change event
 			$rootScope.$on(ConnectionEvents.change, updateConnectionState);
