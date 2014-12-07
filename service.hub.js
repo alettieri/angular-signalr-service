@@ -70,11 +70,13 @@
 			 */
 			on: function on(evt, fn) {
 
-				this.proxy.on(evt, function (response) {
-
+				this.proxy.on(evt, function () {
+					
+					var args = arguments;
+					
 					// Have angular run a digest
 					$rootScope.$evalAsync(function () {
-						fn.call(fn, response);
+						fn.apply(fn, args);
 					});
 
 				});
